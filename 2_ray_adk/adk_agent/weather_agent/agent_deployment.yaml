@@ -1,0 +1,50 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: adk-agent
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: adk-agent
+  template:
+    metadata:
+      labels:
+        app: adk-agent
+    spec:
+      serviceAccount: adk-agent-sa
+      containers:
+      - name: adk-agent
+        image: us-central1-docker.pkg.dev/gke-ai-open-models/llm-agent-repo/adk-agent:latest
+        resources:
+          limits:
+            memory: 1Gi
+            cpu: 2
+            ephemeral-storage: 3Gi
+          requests:
+            memory: 1Gi
+            cpu: 2
+            ephemeral-storage: 3Gi
+        ports:
+        - containerPort: 8080
+        env:
+          - name: PORT
+            value: '8080'
+          - name: GOOGLE_GENAI_USE_VERTEXAI
+            value: 'True'
+          - name: GOOGLE_CLOUD_PROJECT
+            value: // replace with your project name
+          - name: GOOGLE_CLOUD_LOCATION
+            value: // replace with your cluster location
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: adk-agent
+spec:
+  type: LoadBalancer
+  ports:
+    - port: 80
+      targetPort: 8080
+  selector:
+    app: adk-agent

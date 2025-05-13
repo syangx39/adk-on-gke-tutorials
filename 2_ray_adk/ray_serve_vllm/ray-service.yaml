@@ -1,83 +1,156 @@
-apiVersion: apps/v1
-kind: Deployment
+apiVersion: ray.io/v1
+kind: RayService
 metadata:
-  name: meta-deployment
+  name: llama-31-8b
 spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: meta-server
-  template:
-    metadata:
-      labels:
-        app: meta-server
-        ai.gke.io/model: Llama-3-1-8B-Instruct
-        ai.gke.io/inference-server: vllm
-        examples.ai.gke.io/source: model-garden
-    spec:
-      containers:
-      - name: inference-server
-        image: vllm/vllm-openai:latest
-        resources:
-          requests:
-            cpu: 8
-            memory: 30Gi
-            ephemeral-storage: 80Gi
-            nvidia.com/gpu : 1
-          limits:
-            cpu: 8
-            memory: 30Gi
-            ephemeral-storage: 80Gi
-            nvidia.com/gpu : 1
-        args:
-        - --host=0.0.0.0
-        - --port=7080
-        - --swap-space=16
-        - --gpu-memory-utilization=0.9
-        - --max-model-len=4096
-        - --trust-remote-code
-        - --model=meta-llama/Llama-3.1-8B-Instruct
-        - --tensor-parallel-size=1
-        - --max-num-seqs=2
-        - --tool-call-parser=llama3_json
-        - --enable-chunked-prefill
-        - --enable-auto-tool-choice
-        - --chat-template=/templates/tool_chat_template_llama3.1_json.jinja
-        env:
-        - name: MODEL_ID
-          value: "meta-llama/Llama-3.1-8B-Instruct"
-        - name: HUGGING_FACE_HUB_TOKEN
-          valueFrom:
-            secretKeyRef:
-              name: hf-secret
-              key: hf_api_token
-        volumeMounts:
-        - mountPath: /dev/shm
-          name: dshm
-        - mountPath: /templates
-          name: chat-templates
-      volumes:
-      - name: dshm
-        emptyDir:
-          medium: Memory
-      - name: chat-templates
-        configMap:
-          name: llama-chat-templates
-      nodeSelector:
-        cloud.google.com/gke-accelerator: nvidia-l4
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: meta-service
-spec:
-  selector:
-    app: meta-server
-  type: ClusterIP
-  ports:
-  - protocol: TCP
-    port: 8000
-    targetPort: 7080
+  serveConfigV2: |
+    applications:
+    - name: llm
+      route_prefix: /
+      import_path: serve_chat_completion:model
+      runtime_env:
+        env_vars:
+          MODEL_ID: "meta-llama/Llama-3.1-8B-Instruct"
+          TENSOR_PARALLELISM: "2"
+          MAX_MODEL_LEN: "2048"
+          CHAT_TEMPLATE_PATH: "/templates/tool_chat_template_llama3.1_json.jinja"
+          VLLM_ENABLE_AUTO_TOOL_CHOICE: "true"
+          TOOL_PARSER_NAME: "llama3_json"
+      deployments:
+      - name: VLLMDeployment
+        num_replicas: 1
+        ray_actor_options:
+          num_cpus: 2
+          # num_gpus 
+  rayClusterConfig:
+    headGroupSpec:
+      rayStartParams:
+        dashboard-host: "0.0.0.0"
+      template:
+        metadata:
+          labels:
+            ai.gke.io: rayserve
+        spec:
+          serviceAccount: adk-ray-agent-sa
+          volumes:
+            - name: dshm
+              emptyDir:
+                medium: Memory
+                sizeLimit: 8Gi
+            - name: chat-templates
+              configMap:
+                name: llama-chat-templates
+          containers:
+            - name: ray-head
+              image: us-central1-docker.pkg.dev/gke-ai-open-models/ray-repo/vllm-ray-service:latest
+              resources:
+                limits:
+                  cpu: "2"
+                  memory: "8Gi"
+                  ephemeral-storage: "15Gi"
+                requests:
+                  cpu: "2"
+                  memory: "8Gi"
+                  ephemeral-storage: "15Gi"
+              ports:
+                  # Ray Global Control Store 
+                  # Handles cluster metadata management, actor discovery, other control plane operations
+                  # All Ray workers and drivers connect to this port
+                - containerPort: 6379
+                  name: gcs-server
+                  # Ray Dashboard
+                - containerPort: 8265
+                  name: dashboard
+                  # Ray Client server
+                  # Enable remote connections to the Ray cluster. External clients can connect using: ray.init(address="ray://<host>:10001")
+                - containerPort: 10001
+                  name: client
+                  # Ray Serve
+                  # HTTP server for model server and inference requets
+                - containerPort: 8000
+                  name: serve
+              env:
+                - name: HUGGING_FACE_HUB_TOKEN
+                  valueFrom:
+                    secretKeyRef:
+                      name: hf-secret
+                      key: hf_api_token
+                - name: PYTHONPATH
+                  value: "/app:${PYTHONPATH}"
+              volumeMounts:
+              - mountPath: /dev/shm
+                name: dshm
+              - mountPath: /templates
+                name: chat-templates
+                readOnly: true
+    workerGroupSpecs:
+      - replicas: 1
+        minReplicas: 1  # Ensure at least one worker
+        maxReplicas: 2
+        groupName: gpu-group
+        rayStartParams: {}
+        template:
+          metadata:
+            labels:
+              ai.gke.io: rayserve
+          spec:
+            nodeSelector:
+              cloud.google.com/gke-accelerator: nvidia-l4
+            serviceAccount: adk-ray-agent-sa
+            volumes:
+            - name: dshm
+              emptyDir:
+                medium: Memory
+                sizeLimit: 8Gi
+            - name: chat-templates
+              configMap:
+                name: llama-chat-templates
+            containers:
+              - name: llm
+                image: us-central1-docker.pkg.dev/gke-ai-open-models/ray-repo/vllm-ray-service:latest
+                env:
+                  - name: HUGGING_FACE_HUB_TOKEN
+                    valueFrom:
+                      secretKeyRef:
+                        name: hf-secret
+                        key: hf_api_token
+                  - name: PYTHONPATH
+                    value: "/app:${PYTHONPATH}"
+                resources:
+                  limits:
+                    cpu: "8"
+                    memory: "25Gi"
+                    nvidia.com/gpu: "2"
+                  requests:
+                    cpu: "8"
+                    memory: "25Gi"
+                    nvidia.com/gpu: "2"
+                volumeMounts:
+                - mountPath: /dev/shm
+                  name: dshm
+                - mountPath: /templates
+                  name: chat-templates
+                  readOnly: true
+                readinessProbe:
+                  exec:
+                    command:
+                      - bash
+                      - -c
+                      - wget -T 5 -q -O- http://localhost:52365/api/local_raylet_healthz | grep success
+                  initialDelaySeconds: 300
+                  periodSeconds: 30
+                  timeoutSeconds: 90
+                  failureThreshold: 15
+                livenessProbe:
+                  exec:
+                    command:
+                      - bash
+                      - -c
+                      - wget -T 5 -q -O- http://localhost:52365/api/local_raylet_healthz | grep success
+                  initialDelaySeconds: 60
+                  periodSeconds: 30
+                  timeoutSeconds: 10
+                  failureThreshold: 10
 ---
 apiVersion: v1
 kind: Secret
