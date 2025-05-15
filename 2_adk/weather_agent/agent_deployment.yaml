@@ -31,11 +31,11 @@ spec:
           - name: PORT
             value: '8080'
           - name: GOOGLE_GENAI_USE_VERTEXAI
-            value: 'True'
+            value: 'True' # [TODO] not sure whether this should still be 'True'
           - name: GOOGLE_CLOUD_PROJECT
-            value: // replace with your project name
+            value: # replace with your project name
           - name: GOOGLE_CLOUD_LOCATION
-            value: // replace with your cluster location
+            value: # replace with your cluster location
 ---
 apiVersion: v1
 kind: Service
