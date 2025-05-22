@@ -1,0 +1,17 @@
+FROM rayproject/ray-ml:2.41.0.deprecated-py39-gpu
+WORKDIR /app
+
+USER root
+COPY requirements.txt .
+
+RUN pip install --no-cache-dir -r requirements.txt
+
+RUN chown -R ray /app
+
+USER ray
+
+COPY serve_chat_completion.py .
+
+ENV PYTHONPATH="/app:${PYTHONPATH}"
+
+CMD []
