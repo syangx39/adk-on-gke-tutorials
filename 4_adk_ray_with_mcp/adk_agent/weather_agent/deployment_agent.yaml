@@ -34,9 +34,9 @@ spec:
             value: 'us-central1'
           - name: GOOGLE_GENAI_USE_VERTEXAI
             value: 'False'
-          - name: MCP_COCKTAIL_SERVICE_HOST
-            value: 'mcp-cocktail-service'
-          - name: MCP_COCKTAIL_SERVICE_PORT
+          - name: WEATHER_MCP_SERVER_HOST
+            value: 'weather-mcp-server'
+          - name: WEATHER_SERVER_PORT
             value: '8080'
 ---
 apiVersion: v1
