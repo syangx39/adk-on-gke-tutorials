@@ -1,8 +1,10 @@
+# Creates the in-cluster identity that the agent pod will use.
 apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: adk-code-executor-sa
 ---
+# Defines the permissions needed to create and monitor Jobs.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
@@ -18,14 +20,15 @@ rules:
   resources: ["pods", "pods/log"]
   verbs: ["get", "list"]
 ---
+# Binds the permissions to the AGENT'S identity (the ServiceAccount).
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
-  name: adk-code-executor-binding-local-user
+  name: adk-code-executor-binding-in-cluster
 subjects:
-- kind: User
-  name: X@google.com
-  apiGroup: rbac.authorization.k8s.io
+- kind: ServiceAccount
+  # This is the key part for the in-cluster deployment.
+  name: adk-code-executor-sa
 roleRef:
   kind: Role
   name: adk-code-executor-role

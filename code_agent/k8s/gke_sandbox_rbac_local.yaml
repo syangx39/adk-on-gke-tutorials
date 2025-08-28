@@ -1,0 +1,36 @@
+# Creates the in-cluster identity that will be used by the code execution Jobs.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: adk-code-executor-sa
+---
+# Defines the permissions needed to create and monitor Jobs.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: adk-code-executor-role
+rules:
+- apiGroups: [""]
+  resources: ["configmaps"]
+  verbs: ["create", "delete", "get", "patch"]
+- apiGroups: ["batch"]
+  resources: ["jobs"]
+  verbs: ["get", "list", "watch", "create", "delete"]
+- apiGroups: [""]
+  resources: ["pods", "pods/log"]
+  verbs: ["get", "list"]
+---
+# Binds the permissions to YOU, the human user running kubectl.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: adk-code-executor-binding-local-user
+subjects:
+- kind: User
+  # This is the key part for local development.
+  name: xiaotongyang@google.com
+  apiGroup: rbac.authorization.k8s.io
+roleRef:
+  kind: Role
+  name: adk-code-executor-role
+  apiGroup: rbac.authorization.k8s.io
