@@ -24,7 +24,7 @@ metadata:
   name: adk-code-executor-binding-local-user
 subjects:
 - kind: User
-  name: xiaotongyang@google.com
+  name: X@google.com
   apiGroup: rbac.authorization.k8s.io
 roleRef:
   kind: Role
